@@ -3,21 +3,6 @@ locals {
         protocol = "tcp"
 }
 
-resource "tls_private_key" "key-gen" {
-        algorithm = var.algorithm
-        rsa_bits  = var.rsa_bits
-}
-
-resource "aws_key_pair" "key" {
-        key_name   = local.key_name
-        public_key = tls_private_key.key-gen.public_key_openssh
-}
-
-resource "local_file" "key-file" {
-        content  = tls_private_key.key-gen.private_key_pem
-        filename = local.key_name
-}
-
 resource "aws_vpc" "vpc" {
         cidr_block           = var.vpc_cidr
         tags = {
@@ -26,11 +11,11 @@ resource "aws_vpc" "vpc" {
         }
 }
 
-resource "aws_subnet" "pub-sub" {
-        count                  = length(var.az)
+resource "aws_subnet" "public-subnet" {
+        count                  = length(var.availability_zones)
         vpc_id                 = aws_vpc.vpc.id
-        cidr_block             = var.pub_sub_cidr[count.index]
-        availability_zone      = var.az[count.index]
+        cidr_block             = var.public_subnet_cidr[count.index]
+        availability_zone      = var.availability_zones[count.index]
         tags = {
           Name = "Public Subnet ${count.index + 1}"
         }
@@ -43,7 +28,7 @@ resource "aws_internet_gateway" "int-gw" {
         }
 }
 
-resource "aws_route_table" "rt-table1"{
+resource "aws_route_table" "route_table_1"{
         vpc_id = aws_vpc.vpc.id
         tags = {
           Name = "Route Table 1"
@@ -51,14 +36,14 @@ resource "aws_route_table" "rt-table1"{
 }
 
 resource "aws_route" "for-igw" {
-        route_table_id         = aws_route_table.rt-table1.id
+        route_table_id         = aws_route_table.route_table_1.id
         destination_cidr_block = var.default_gateway
         gateway_id             = aws_internet_gateway.int-gw.id
 }
 
-resource "aws_route_table_association" "rt-ass1" {
-        subnet_id      = aws_subnet.pub-sub.id
-        route_table_id = aws_route_table.rt-table1.id
+resource "aws_route_table_association" "route_association-1" {
+        subnet_id      = aws_subnet.public-subnet.id
+        route_table_id = aws_route_table.route_table_1.id
 }
 
 resource "aws_eip" "eip" {
@@ -67,33 +52,14 @@ resource "aws_eip" "eip" {
 
 resource "aws_nat_gateway" "nat-gw" {
         allocation_id = aws_eip.eip.id
-        subnet_id     = aws_subnet.pub-sub.id
+        subnet_id     = aws_subnet.public-subnet.id
         tags = {
-          Name = "My NAT Gateway"
+          Name = "NAT Gateway"
         }
 }
 
-resource "aws_route_table" "rt-table2" {
-        vpc_id = aws_vpc.vpc.id
-        tags = {
-          Name = "Route Table 2"
-        }
-}
-
-resource "aws_route" "for-ngw" {
-        route_table_id         = aws_route_table.rt-table2.id
-        destination_cidr_block = var.default_gateway
-        gateway_id             = aws_nat_gateway.nat-gw.id
-}
-
-resource "aws_route_table_association" "rt-ass2" {
-        subnet_id      = aws_subnet.priv-sub.id
-        route_table_id = aws_route_table.rt-table2.id
-} 
-
-resource "aws_security_group" "tf-sg" {
-        name        = "custom-sg"
-        description = "Some desc of sg"
+resource "aws_security_group" "security_group" {
+        name        = "sg"
         vpc_id      = aws_vpc.vpc.id
         
         ingress {
